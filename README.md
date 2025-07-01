@@ -2,6 +2,10 @@
 
 A simple, fast Markdown editor for macOS built with a data-oriented, low-abstraction programming approach.
 
+C++ with Cocoa via Objective-C++
+
+i am building a markdown editor using C++ with Cocoa via Objective-C++.  i would like to have the editor on the right. and then have a outliner pane on the left. i want the outline to be atomic markdown nodes. where you can reorganize and nest them, and it will be reflected in the editor. when you click on a node, it only shows the content of that node and sub-nodes.
+
 ## Overview
 
 MDKnit is a native macOS text editor designed for editing Markdown files. It follows the programming philosophy of Casey Muratori, Brian Will, and Mike Acton - emphasizing performance, clarity, and minimal abstraction.

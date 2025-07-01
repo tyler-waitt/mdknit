@@ -13,7 +13,8 @@ LDFLAGS = -framework Cocoa -framework AppKit
 
 # Source files
 CPP_SOURCES = $(SRC_DIR)/text_buffer.cpp
-MM_SOURCES = $(SRC_DIR)/main.mm $(SRC_DIR)/app_delegate.mm $(SRC_DIR)/editor_window.mm
+MM_SOURCES = $(SRC_DIR)/main.mm $(SRC_DIR)/app_delegate.mm $(SRC_DIR)/editor_window.mm \
+           $(SRC_DIR)/markdown_node.mm $(SRC_DIR)/node_card_view.mm $(SRC_DIR)/outliner_view_controller.mm
 
 # Object files
 CPP_OBJECTS = $(patsubst $(SRC_DIR)/%.cpp,$(BUILD_DIR)/%.o,$(CPP_SOURCES))
