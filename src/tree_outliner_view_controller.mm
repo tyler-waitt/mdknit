@@ -92,7 +92,7 @@ static NSString *const kNodePasteboardType = @"com.mdknit.treenode";
 
 - (NSInteger)outlineView:(NSOutlineView *)outlineView numberOfChildrenOfItem:(id)item {
     if (!item) {
-        return self.rootNode.children.count;
+        return 1;  // Just the root node
     }
     MarkdownNode *node = item;
     return node.children.count;
@@ -100,7 +100,7 @@ static NSString *const kNodePasteboardType = @"com.mdknit.treenode";
 
 - (id)outlineView:(NSOutlineView *)outlineView child:(NSInteger)index ofItem:(id)item {
     if (!item) {
-        return self.rootNode.children[index];
+        return self.rootNode;  // Return the root node itself
     }
     MarkdownNode *node = item;
     return node.children[index];

@@ -95,7 +95,7 @@
 }
 
 - (void)createSampleDocument {
-    self.rootNode = [[MarkdownNode alloc] initWithTitle:@"Document" content:@""];
+    self.rootNode = [[MarkdownNode alloc] initWithTitle:@"Full Document" content:@""];
     
     MarkdownNode* intro = [[MarkdownNode alloc] initWithTitle:@"Introduction" 
                                                        content:@"Welcome to MDKnit, a visual markdown editor."];
@@ -210,7 +210,8 @@
     const char* cString = [content UTF8String];
     text_buffer_set_text(&_textBuffer, cString, strlen(cString));
     
-    if (self.currentNode) {
+    // Only update the node if it's a leaf node (no children)
+    if (self.currentNode && self.currentNode.children.count == 0) {
         NSArray* lines = [content componentsSeparatedByString:@"\n"];
         if (lines.count > 0) {
             self.currentNode.title = lines[0];
@@ -224,17 +225,49 @@
         }
         [self.outlinerController reloadData];
     }
+    // For parent nodes, the editor is read-only (showing aggregated content)
 }
 
 #pragma mark - OutlinerViewControllerDelegate
 
 - (void)outlinerDidSelectNode:(MarkdownNode *)node {
     self.currentNode = node;
-    NSString* fullContent = node.title;
-    if (node.content.length > 0) {
-        fullContent = [NSString stringWithFormat:@"%@\n%@", node.title, node.content];
+    
+    // For parent nodes, show aggregated content of all children
+    if (node.children.count > 0) {
+        NSMutableString *aggregatedContent = [NSMutableString string];
+        [self appendNodeContent:node toString:aggregatedContent withLevel:0];
+        [self.textView setString:aggregatedContent];
+        [self.textView setEditable:NO];
+        [self.textView setBackgroundColor:[NSColor colorWithWhite:0.98 alpha:1.0]];
+    } else {
+        // For leaf nodes, show just the node's content
+        NSString* fullContent = node.title;
+        if (node.content.length > 0) {
+            fullContent = [NSString stringWithFormat:@"%@\n%@", node.title, node.content];
+        }
+        [self.textView setString:fullContent];
+        [self.textView setEditable:YES];
+        [self.textView setBackgroundColor:[NSColor textBackgroundColor]];
     }
-    [self.textView setString:fullContent];
+}
+
+- (void)appendNodeContent:(MarkdownNode *)node toString:(NSMutableString *)string withLevel:(NSInteger)level {
+    // Add the node's title as a heading
+    for (NSInteger i = 0; i < level + 1; i++) {
+        [string appendString:@"#"];
+    }
+    [string appendFormat:@" %@\n\n", node.title];
+    
+    // Add the node's content if it has any
+    if (node.content.length > 0) {
+        [string appendFormat:@"%@\n\n", node.content];
+    }
+    
+    // Recursively add all children's content
+    for (MarkdownNode *child in node.children) {
+        [self appendNodeContent:child toString:string withLevel:level + 1];
+    }
 }
 
 - (void)outlinerDidUpdateStructure {

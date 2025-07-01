@@ -18,7 +18,7 @@ NSString *const kOutlinerModeKey = @"OutlinerMode";
 - (instancetype)init {
     self = [super init];
     if (self) {
-        _outlinerMode = OutlinerModeCard;
+        _outlinerMode = OutlinerModeTree;
     }
     return self;
 }
