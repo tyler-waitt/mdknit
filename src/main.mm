@@ -13,6 +13,20 @@ int main(int argc, const char* argv[]) {
         NSMenu* appMenu = [[NSMenu alloc] init];
         [appMenuItem setSubmenu:appMenu];
         
+        NSMenuItem* aboutMenuItem = [[NSMenuItem alloc] initWithTitle:[@"About " stringByAppendingString:appName]
+                                                                action:@selector(orderFrontStandardAboutPanel:)
+                                                         keyEquivalent:@""];
+        [appMenu addItem:aboutMenuItem];
+        
+        [appMenu addItem:[NSMenuItem separatorItem]];
+        
+        NSMenuItem* preferencesMenuItem = [[NSMenuItem alloc] initWithTitle:@"Preferences..."
+                                                                     action:@selector(showPreferences:)
+                                                              keyEquivalent:@","];
+        [appMenu addItem:preferencesMenuItem];
+        
+        [appMenu addItem:[NSMenuItem separatorItem]];
+        
         NSMenuItem* quitMenuItem = [[NSMenuItem alloc] initWithTitle:[@"Quit " stringByAppendingString:appName]
                                                                action:@selector(terminate:)
                                                         keyEquivalent:@"q"];

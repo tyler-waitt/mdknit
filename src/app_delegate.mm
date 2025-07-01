@@ -1,4 +1,5 @@
 #import <Cocoa/Cocoa.h>
+#import "settings_window.h"
 
 @interface AppDelegate : NSObject <NSApplicationDelegate>
 @property (strong, nonatomic) NSWindowController* mainWindowController;
@@ -14,6 +15,10 @@
 
 - (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication*)sender {
     return YES;
+}
+
+- (void)showPreferences:(id)sender {
+    [[SettingsWindowController sharedController] showWindow];
 }
 
 @end

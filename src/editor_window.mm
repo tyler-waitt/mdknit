@@ -1,14 +1,18 @@
 #import <Cocoa/Cocoa.h>
 #include "text_buffer.h"
+#import "outliner_protocol.h"
 #import "outliner_view_controller.h"
+#import "tree_outliner_view_controller.h"
 #import "markdown_node.h"
+#import "settings_manager.h"
 
-@interface EditorWindowController : NSWindowController <NSTextViewDelegate, OutlinerViewControllerDelegate, NSSplitViewDelegate>
+@interface EditorWindowController : NSWindowController <NSTextViewDelegate, OutlinerDelegate, NSSplitViewDelegate>
 @property (strong, nonatomic) NSTextView* textView;
 @property (strong, nonatomic) NSSplitView* splitView;
-@property (strong, nonatomic) OutlinerViewController* outlinerController;
+@property (strong, nonatomic) NSViewController<OutlinerViewController>* outlinerController;
 @property (nonatomic) TextBuffer textBuffer;
 @property (strong, nonatomic) MarkdownNode* currentNode;
+@property (strong, nonatomic) MarkdownNode* rootNode;
 @end
 
 @implementation EditorWindowController
@@ -33,12 +37,18 @@
         [self setupUI];
         [self setupMenus];
         [self createSampleDocument];
+        
+        [[NSNotificationCenter defaultCenter] addObserver:self
+                                                 selector:@selector(settingsChanged:)
+                                                     name:kSettingsChangedNotification
+                                                   object:nil];
     }
     return self;
 }
 
 - (void)dealloc {
     text_buffer_free(&_textBuffer);
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
 }
 
 - (void)setupUI {
@@ -48,10 +58,7 @@
     [self.splitView setVertical:YES];
     [self.splitView setDelegate:self];
     
-    self.outlinerController = [[OutlinerViewController alloc] init];
-    self.outlinerController.delegate = self;
-    [self.outlinerController.view setAutoresizingMask:NSViewHeightSizable];
-    [self.splitView addSubview:self.outlinerController.view];
+    [self createOutlinerForCurrentMode];
     
     NSScrollView* scrollView = [[NSScrollView alloc] initWithFrame:NSMakeRect(0, 0, 500, 600)];
     [scrollView setHasVerticalScroller:YES];
@@ -73,15 +80,29 @@
     [self.window.contentView addSubview:self.splitView];
 }
 
+- (void)createOutlinerForCurrentMode {
+    SettingsManager *settings = [SettingsManager sharedManager];
+    
+    if (settings.outlinerMode == OutlinerModeTree) {
+        self.outlinerController = [[TreeOutlinerViewController alloc] init];
+    } else {
+        self.outlinerController = [[OutlinerViewController alloc] init];
+    }
+    
+    self.outlinerController.delegate = self;
+    [self.outlinerController.view setAutoresizingMask:NSViewHeightSizable];
+    [self.splitView addSubview:self.outlinerController.view];
+}
+
 - (void)createSampleDocument {
-    MarkdownNode* rootNode = [[MarkdownNode alloc] initWithTitle:@"Document" content:@""];
+    self.rootNode = [[MarkdownNode alloc] initWithTitle:@"Document" content:@""];
     
     MarkdownNode* intro = [[MarkdownNode alloc] initWithTitle:@"Introduction" 
                                                        content:@"Welcome to MDKnit, a visual markdown editor."];
-    [rootNode addChild:intro];
+    [self.rootNode addChild:intro];
     
     MarkdownNode* features = [[MarkdownNode alloc] initWithTitle:@"Features" content:@""];
-    [rootNode addChild:features];
+    [self.rootNode addChild:features];
     
     MarkdownNode* dragDrop = [[MarkdownNode alloc] initWithTitle:@"Drag & Drop" 
                                                           content:@"Drag cards to reorder your document structure."];
@@ -93,9 +114,9 @@
     
     MarkdownNode* usage = [[MarkdownNode alloc] initWithTitle:@"Usage" 
                                                        content:@"Click any card to edit its content in the editor."];
-    [rootNode addChild:usage];
+    [self.rootNode addChild:usage];
     
-    self.outlinerController.rootNode = rootNode;
+    self.outlinerController.rootNode = self.rootNode;
     [self.outlinerController reloadData];
 }
 
@@ -217,9 +238,34 @@
 }
 
 - (void)outlinerDidUpdateStructure {
-    NSString* markdown = [self.outlinerController.rootNode generateMarkdown];
+    NSString* markdown = [self.rootNode generateMarkdown];
     const char* cString = [markdown UTF8String];
     text_buffer_set_text(&_textBuffer, cString, strlen(cString));
+}
+
+#pragma mark - Settings
+
+- (void)settingsChanged:(NSNotification *)notification {
+    [self switchOutliner];
+}
+
+- (void)switchOutliner {
+    NSView *currentOutlinerView = self.outlinerController.view;
+    CGFloat currentWidth = currentOutlinerView.frame.size.width;
+    
+    [currentOutlinerView removeFromSuperview];
+    
+    [self createOutlinerForCurrentMode];
+    self.outlinerController.rootNode = self.rootNode;
+    [self.outlinerController reloadData];
+    
+    if (self.currentNode) {
+        [self.outlinerController selectNode:self.currentNode];
+    }
+    
+    NSView *editorView = [self.splitView.subviews lastObject];
+    [self.splitView setSubviews:@[self.outlinerController.view, editorView]];
+    [self.splitView setPosition:currentWidth ofDividerAtIndex:0];
 }
 
 #pragma mark - NSSplitViewDelegate

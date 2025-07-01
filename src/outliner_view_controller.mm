@@ -9,6 +9,9 @@ static NSString *const kNodePasteboardType = @"com.mdknit.node";
 @property (nonatomic, strong) NSScrollView *scrollView;
 @property (nonatomic, strong) NSMutableArray<MarkdownNode *> *flattenedNodes;
 @property (nonatomic, strong) MarkdownNode *selectedNode;
+@property (nonatomic, strong) NSIndexPath *draggedIndexPath;
+@property (nonatomic, strong) NSIndexPath *dropTargetIndexPath;
+@property (nonatomic, assign) NSCollectionViewDropOperation currentDropOperation;
 @end
 
 @implementation OutlinerViewController
@@ -148,20 +151,71 @@ static NSString *const kNodePasteboardType = @"com.mdknit.node";
 
 - (id<NSPasteboardWriting>)collectionView:(NSCollectionView *)collectionView 
                 pasteboardWriterForItemAtIndexPath:(NSIndexPath *)indexPath {
+    self.draggedIndexPath = indexPath;
     MarkdownNode *node = self.flattenedNodes[indexPath.item];
     NSPasteboardItem *pbItem = [[NSPasteboardItem alloc] init];
     [pbItem setString:node.nodeId forType:kNodePasteboardType];
     return pbItem;
 }
 
+- (void)collectionView:(NSCollectionView *)collectionView draggingSession:(NSDraggingSession *)session willBeginAtPoint:(NSPoint)screenPoint forItemsAtIndexPaths:(NSSet<NSIndexPath *> *)indexPaths {
+    for (NSIndexPath *indexPath in indexPaths) {
+        NodeCollectionViewItem *item = (NodeCollectionViewItem *)[collectionView itemAtIndexPath:indexPath];
+        item.cardView.alphaValue = 0.5;
+    }
+}
+
+- (void)collectionView:(NSCollectionView *)collectionView draggingSession:(NSDraggingSession *)session endedAtPoint:(NSPoint)screenPoint dragOperation:(NSDragOperation)operation {
+    if (self.draggedIndexPath) {
+        NodeCollectionViewItem *item = (NodeCollectionViewItem *)[collectionView itemAtIndexPath:self.draggedIndexPath];
+        item.cardView.alphaValue = 1.0;
+    }
+    self.draggedIndexPath = nil;
+    self.dropTargetIndexPath = nil;
+    [self updateDropIndicator];
+}
+
 - (NSDragOperation)collectionView:(NSCollectionView *)collectionView 
                      validateDrop:(id<NSDraggingInfo>)draggingInfo 
                 proposedIndexPath:(NSIndexPath **)proposedDropIndexPath 
                     dropOperation:(NSCollectionViewDropOperation *)proposedDropOperation {
-    if (*proposedDropOperation == NSCollectionViewDropBefore) {
-        return NSDragOperationMove;
+    NSPasteboard *pb = [draggingInfo draggingPasteboard];
+    if (![pb canReadItemWithDataConformingToTypes:@[kNodePasteboardType]]) {
+        return NSDragOperationNone;
     }
-    return NSDragOperationNone;
+    
+    if (*proposedDropIndexPath && self.draggedIndexPath) {
+        if ([*proposedDropIndexPath isEqual:self.draggedIndexPath]) {
+            return NSDragOperationNone;
+        }
+        
+        MarkdownNode *draggedNode = self.flattenedNodes[self.draggedIndexPath.item];
+        if (*proposedDropIndexPath != nil && (*proposedDropIndexPath).item < self.flattenedNodes.count) {
+            MarkdownNode *targetNode = self.flattenedNodes[(*proposedDropIndexPath).item];
+            if ([self isNode:targetNode descendantOf:draggedNode]) {
+                return NSDragOperationNone;
+            }
+        }
+    }
+    
+    NSPoint mouseLocation = [collectionView convertPoint:[draggingInfo draggingLocation] fromView:nil];
+    if (*proposedDropIndexPath && (*proposedDropIndexPath).item < self.flattenedNodes.count) {
+        NodeCollectionViewItem *item = (NodeCollectionViewItem *)[collectionView itemAtIndexPath:*proposedDropIndexPath];
+        if (item) {
+            NSRect itemFrame = item.view.frame;
+            CGFloat relativeY = mouseLocation.y - itemFrame.origin.y;
+            
+            if (relativeY > itemFrame.size.height * 0.25 && relativeY < itemFrame.size.height * 0.75) {
+                *proposedDropOperation = NSCollectionViewDropOn;
+            }
+        }
+    }
+    
+    self.dropTargetIndexPath = *proposedDropIndexPath;
+    self.currentDropOperation = *proposedDropOperation;
+    [self updateDropIndicator];
+    
+    return NSDragOperationMove;
 }
 
 - (BOOL)collectionView:(NSCollectionView *)collectionView 
@@ -178,17 +232,30 @@ static NSString *const kNodePasteboardType = @"com.mdknit.node";
     
     [draggedNode.parent removeChild:draggedNode];
     
-    if (indexPath.item < self.flattenedNodes.count) {
+    if (dropOperation == NSCollectionViewDropOn && indexPath.item < self.flattenedNodes.count) {
         MarkdownNode *targetNode = self.flattenedNodes[indexPath.item];
-        NSInteger targetIndex = [targetNode.parent.children indexOfObject:targetNode];
-        [targetNode.parent insertChild:draggedNode atIndex:targetIndex];
+        [targetNode addChild:draggedNode];
+        targetNode.isExpanded = YES;
+    } else if (indexPath.item < self.flattenedNodes.count) {
+        MarkdownNode *targetNode = self.flattenedNodes[indexPath.item];
+        MarkdownNode *targetParent = targetNode.parent ?: self.rootNode;
+        NSInteger targetIndex = [targetParent.children indexOfObject:targetNode];
+        
+        if (dropOperation == NSCollectionViewDropBefore) {
+            [targetParent insertChild:draggedNode atIndex:targetIndex];
+        } else {
+            [targetParent insertChild:draggedNode atIndex:targetIndex + 1];
+        }
     } else if (self.flattenedNodes.count > 0) {
         MarkdownNode *lastNode = self.flattenedNodes.lastObject;
-        [lastNode.parent addChild:draggedNode];
+        MarkdownNode *parent = lastNode.parent ?: self.rootNode;
+        [parent addChild:draggedNode];
     } else {
         [self.rootNode addChild:draggedNode];
     }
     
+    self.dropTargetIndexPath = nil;
+    [self updateDropIndicator];
     [self reloadData];
     [self.delegate outlinerDidUpdateStructure];
     
@@ -206,6 +273,38 @@ static NSString *const kNodePasteboardType = @"com.mdknit.node";
     }
     
     return nil;
+}
+
+- (BOOL)isNode:(MarkdownNode *)node descendantOf:(MarkdownNode *)potentialAncestor {
+    MarkdownNode *current = node;
+    while (current) {
+        if (current == potentialAncestor) {
+            return YES;
+        }
+        current = current.parent;
+    }
+    return NO;
+}
+
+- (void)updateDropIndicator {
+    for (NSInteger i = 0; i < self.flattenedNodes.count; i++) {
+        NSIndexPath *indexPath = [NSIndexPath indexPathForItem:i inSection:0];
+        NodeCollectionViewItem *item = (NodeCollectionViewItem *)[self.collectionView itemAtIndexPath:indexPath];
+        if (!item) continue;
+        
+        if (self.dropTargetIndexPath && self.dropTargetIndexPath.item == i) {
+            if (self.currentDropOperation == NSCollectionViewDropOn) {
+                item.cardView.layer.borderColor = [[NSColor controlAccentColor] CGColor];
+                item.cardView.layer.borderWidth = 2;
+            } else {
+                item.cardView.layer.borderColor = [[NSColor separatorColor] CGColor];
+                item.cardView.layer.borderWidth = 1;
+            }
+        } else {
+            item.cardView.layer.borderColor = [[NSColor separatorColor] CGColor];
+            item.cardView.layer.borderWidth = 1;
+        }
+    }
 }
 
 @end
